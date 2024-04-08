@@ -1,0 +1,37 @@
+name: Auto Post to Dev.to and Commit Lock Files
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main  # or your default branch
+
+jobs:
+  post-and-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          pip install requests PyYAML python-frontmatter
+
+      - name: Run Dev.to Posting Script
+        run: python ./scripts/devto_post_all.py
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+
+      - name: Commit .lock Files
+        run: |
+          git config --local user.email "help@caravana.cloud"
+          git config --local user.name "Caravana Cloud"
+          git add .
+          git commit -m "Add/Update .lock files" -a || echo "No changes to commit"
+          git push
