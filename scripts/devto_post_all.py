@@ -25,60 +25,86 @@ def post_exists(filepath):
     print(f"No submission record found for '{filepath}'.")
     return False
 
+def create_post(filepath, metadata, content, api_key):
+    """Creates a new post on Dev.to."""
+    data = {
+        "article": {
+            "title": metadata.get('title', 'Untitled Post'),
+            "published": metadata.get('published', False),
+            "body_markdown": content,
+            "canonical_url": metadata.get('canonical_url', None),
+            "tags": metadata.get('tags', []),
+            "cover_image": metadata.get('cover_image', None),
+        }
+    }
     
+    headers = {
+        "api-key": api_key,
+        "Content-Type": "application/json",
+    }
+    
+    response = requests.post("https://dev.to/api/articles", json=data, headers=headers)
+    
+    if response.status_code == 201:
+        logging.info(f"Successfully submitted post: {filepath}")
+        article_data = response.json()
+        article_id = article_data['id']
+        
+        with open(filepath + ".lock", 'w') as lockfile:
+            lockfile.write(str(article_id))
+    else:
+        error_body = response.text
+        logging.error(f"Failed to submit post: {filepath}. Status code: {response.status_code}")
+        logging.error(f"Error response: {error_body}")
+
+def update_post(filepath, metadata, content, api_key, article_id):
+    """Updates an existing post on Dev.to."""
+    data = {
+        "article": {
+            "title": metadata.get('title', 'Untitled Post'),
+            "published": metadata.get('published', False),
+            "body_markdown": content,
+            "canonical_url": metadata.get('canonical_url', None),
+            "tags": metadata.get('tags', []),
+            "cover_image": metadata.get('cover_image', None),
+        }
+    }
+    
+    headers = {
+        "api-key": api_key,
+        "Content-Type": "application/json",
+    }
+    
+    response = requests.put(f"https://dev.to/api/articles/{article_id}", json=data, headers=headers)
+    
+    if response.status_code == 200:
+        logging.info(f"Successfully updated post: {filepath}")
+    else:
+        error_body = response.text
+        logging.error(f"Failed to update post: {filepath}. Status code: {response.status_code}")
+        logging.error(f"Error response: {error_body}")
+
 def submit_post(filepath):
-    # Fetch the API key from the environment variable
     api_key = os.getenv('DEVTO_API_KEY')
     
     if not api_key:
         logging.error("DEVTO_API_KEY environment variable not set.")
         return
 
-    # Read the content of the Markdown file
     with open(filepath, 'r', encoding='utf-8') as file:
         post = frontmatter.load(file)
         content = post.content
         metadata = post.metadata
-        canonical_url = metadata.get('canonical_url', None)
-        if(post_exists(filepath)):
-            logging.info(f"Post already exists on Dev.to: {filepath}")
-            return
+
+    lock_file_path = filepath + ".lock"
+    if os.path.exists(lock_file_path):
+        with open(lock_file_path, 'r') as lock_file:
+            article_id = lock_file.read().strip()
+            if article_id:
+                update_post(filepath, metadata, content, api_key, article_id)
+                return
     
-        title = metadata.get('title', 'Untitled Post')
-        published = metadata.get('published', False)
-        cover_image = metadata.get('cover_image', None)
-        tags = metadata.get('tags', [])
-        # Prepare the API request
-        headers = {
-            "api-key": api_key,
-            "Content-Type": "application/json",
-        }
-        data = {
-            "article": {
-                "title": title,
-                "published": published,
-                "body_markdown": content,
-                "canonical_url": canonical_url,
-                "tags": tags,
-                "cover_image": cover_image,
-            }
-        }
-        
-        # Send the request to Dev.to
-        response = requests.post("https://dev.to/api/articles", json=data, headers=headers)
-        
-        # Check if the request was successful
-        if response.status_code == 201:
-            logging.info(f"Successfully submitted post: {filepath}")
-            article_data = response.json()
-            article_id = article_data['id']
-            
-            with open(filepath + ".lock", 'w') as lockfile:
-                lockfile.write(str(article_id))
-        else:
-            error_body = response.text
-            logging.error(f"Failed to submit post: {filepath}. Status code: {response.status_code}")
-            logging.error(f"Error response: {error_body}")
+    create_post(filepath, metadata, content, api_key)
 
 def find_posts(directory):
     """Scan the specified directory for .md files and check for corresponding .lock files."""
